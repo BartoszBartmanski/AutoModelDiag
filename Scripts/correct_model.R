@@ -16,24 +16,28 @@ mod <- function() {
       0.05,
       0.01, 0.01
     )
+    add.err <- sqrt(0.25)
+    prop.err <- sqrt(0.01)
   })
 
   model({
     ka <- tka * exp(eta.ka)
-    cl <- tcl * exp(eta.cl)
+    cl <- (1 - exp(-0.0199 * time)) * tcl * exp(eta.cl)
     vc <- tvc * exp(eta.vc)
 
     d / dt(depot) <- -ka * depot
     d / dt(central) <- ka * depot - cl / vc * central
 
     conc <- central / vc
-    DV <- conc + add.sd
+    DV <- conc
+    DV ~ add(add.err) + prop(prop.err)
   })
 }
 
 sigma <- lotri(add.sd ~ 0.05)
 
 n_sub <- 100
+n_doses <- 3
 
 
 # dose records
