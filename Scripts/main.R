@@ -1,9 +1,11 @@
 library(rxode2)
+library(nlmixr2)
 library(ggplot2)
 library(tidyverse)
+library(dplyr)
+library(purrr)
+library(tibble)
 
-
-#TODO set a variable with common initial estimates for all the models tested
 set.seed(32)
 rxSetSeed(32)
 
@@ -97,7 +99,61 @@ mod_struct_miss<- function() {
   })
 }
 
-create_sim_data <- function(error_size, iiv_size, sampling) {
+#' Generate PK sampling schedules for rxode2 simulations
+#'
+#' Creates dense or sparse PK sampling schedules for multiple
+#' subjects, with optional time jitter, formatted for use with
+#' `rxode2::eventTable()`.
+#'
+#' @param type Character string. Either `"dense"` or `"sparse"`.
+#' @param n_sub Integer. Number of subjects.
+#' @param jitter_min Numeric. Maximum absolute jitter (minutes).
+#' @param seed Optional integer. Random seed.
+#'
+#' @return A tibble with columns `id`, `time`, and `evid`.
+#'
+generate_pk_sampling <- function(
+    type = "dense",
+    n_sub = 300,
+    jitter_min = 2,
+    seed = 355232
+) {
+
+  set.seed(seed)
+
+  jitter_hr <- jitter_min / 60
+
+  ## ---- Nominal sampling times (hours) ----
+  dense_times <- c(
+    7 * 24 + c(-0.5, 0.5, 1, 2, 3, 4, 6, 8, 9, 24, 48, 72, 96, 120),
+    8 * 24 + c(-0.5, 1, 2, 4),
+    14 * 24 + c(-0.5, 0.5, 1, 2, 3, 4, 6, 8, 9, 24),
+    c(140, 196, 252, 308) * 24
+  )
+
+  sparse_times <- c(
+    c(-0.5, 28, 56, 84, 112) * 24,
+    c(168, 196, 252) * 24
+  )
+
+  nominal_times <- if (type == "dense") dense_times else sparse_times
+
+  ## ---- Build sampling table (tidyverse) ----
+
+  tibble(id = seq_len(n_sub)) %>%
+    mutate(
+      time = map(
+        id,
+        ~ nominal_times +
+          runif(length(nominal_times), -jitter_hr, jitter_hr)
+      )
+    ) %>%
+    unnest(time) %>%
+    arrange(id, time)
+}
+
+
+create_sim_data <- function(error_scale, iiv_scale, pk_sampling) {
   mod <- function() {
     ini({
       tka <- 2.5
@@ -106,11 +162,11 @@ create_sim_data <- function(error_size, iiv_size, sampling) {
       # between subject variability
       eta.ka ~ 0.12
       eta.cl + eta.vc ~ c(
-        0.05 * iiv_size,
-        0.01, 0.01 * iiv_size
+        0.05,
+        0.01, 0.01
       )
-      add.err <- sqrt(0.25) * error_size
-      prop.err <- sqrt(0.01) * error_size
+      add.err <- sqrt(0.25)
+      prop.err <- sqrt(0.01)
     })
 
     model({
@@ -128,11 +184,13 @@ create_sim_data <- function(error_size, iiv_size, sampling) {
   }
 
   n_sub <- 100
-  n_doses <- 3
+  n_doses <-30
+
+  sampling=generate_pk_sampling(type = pk_sampling,
+                              n_sub = n_sub)
 
 
-  # dose records
-  dose_et <- et(
+  et <- et(
     amountUnits = "mg",
     timeUnits = "days"
   ) %>%
@@ -140,11 +198,9 @@ create_sim_data <- function(error_size, iiv_size, sampling) {
       id = 1:n_sub,
       dose = 400,
       nbr.doses = n_doses,
-      dosing.interval = 1
-    )
-
-  # eventable
-  et <- dose_et %>% sampling()
+      dosing.interval = 24
+    )%>%
+    add.sampling(sampling)
 
   sim <- rxSolve(mod, et)
 
@@ -167,7 +223,7 @@ create_sim_data <- function(error_size, iiv_size, sampling) {
   sim_dt <- rbind(obs_dt, dose_dt) %>%
     arrange(ID, TIME, -EVID) %>%
     left_join(demo, by = "ID") %>%
-    mutate(TSLD = TIME %% 1)
+    mutate(TSLD = TIME %% 24)
 
   return(sim_dt)
 }
@@ -289,14 +345,24 @@ extract_fit_features <- function(fit) {
 
 
 
-create_ML_samples<-function(mod_string,
-                            error_size,
-                            iiv_size,
-                            sampling){
 
-  sim_data=create_sim_data( error_size,
-                   iiv_size,
-                   sampling)
+#'
+#'
+#' @param mod_name_string String with the name of a rxode 2 model. Currently accepts: "correct", "struct_miss", "resid_miss".
+#' @param error_scale Double that will indicate the scale in which the error/additive will be increased.
+#' @param iiv_scale Double that will indicate the scale in which the variance of the IIV of all variables will be increased.
+#' @param pk_sampling String that defines the PK sampling: "dense", "sparse"
+#'
+#' @return A list with the mod name string, fit features, error_scale, iiv_scale and pk_sampling
+#'
+create_ML_samples<-function(mod_name_string,
+                            error_scale,
+                            iiv_scale,
+                            pk_sampling){
+
+  sim_data=create_sim_data( error_scale,
+                   iiv_scale,
+                   pk_sampling)
 
 
   if(mod_string=="correct"){
@@ -309,12 +375,12 @@ create_ML_samples<-function(mod_string,
     stop()
     }
 
-  features=extract_fit_features(fit)
+  fit_features=extract_fit_features(fit)
 
   obj=list(mod_name=mod_string,
-           features=features,
-           error_size=error_size,
-           iiv_size=iiv_size,
-           sampling=sampling)
+           fit_features=fit_features,
+           error_scale=error_scale,
+           iiv_scale=iiv_scale,
+           pk_sampling=pk_sampling)
 return(obj)
 }
