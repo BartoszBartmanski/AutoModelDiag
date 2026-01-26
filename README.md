@@ -7,11 +7,14 @@ Links:
 
 ## TODO: Bartosz
 * Set a variable with common initial estimates for all the models tested
-
+* Check where the seed should be so everything is reproducible in this part
 ## TODO/Comments
 
 * Check what are realistic parameters and that we are we considering everything in: https://pmc.ncbi.nlm.nih.gov/articles/PMC7894400/?utm
 * Check if it makes sense to scale the variance of all parameters or just some
 * If we want other diagnostic metrics we could use ggpmx
+* Make it so that some subjects did not take some doses 
+* add missings doses
+
 
 

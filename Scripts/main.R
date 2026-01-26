@@ -13,33 +13,34 @@ rxSetSeed(32)
 ini_vals=c(ka=2,cl=3)
 
 mod_correct <- function() {
+
   ini({
-    tka <- ini_vals$ka
-    tcl <- 50
-    tvc <- 7
-    # between subject variability
+    tka = 2.5
+    tcl = 50
+    tvc = 7
+
     eta.ka ~ 0.12
     eta.cl + eta.vc ~ c(
       0.05,
       0.01, 0.01
     )
-    add.err <- sqrt(0.25)
-    prop.err <- sqrt(0.01)
+
+    add.err  <- sqrt(0.25)
+    prop.err <-  sqrt(0.01)
   })
 
   model({
-    ka <- tka * exp(eta.ka)
-    cl <- (1 - exp(-0.0199 * time)) * tcl * exp(eta.cl)
-    vc <- tvc * exp(eta.vc)
-
-    d / dt(depot) <- -ka * depot
-    d / dt(central) <- ka * depot - cl / vc * central
-
-    conc <- central / vc
-    DV <- conc
-    DV ~ add(add.err) + prop(prop.err)
-  })
+  ka = tka * exp(eta.ka)
+  cl = (1 - exp(-0.0199 * time)) * tcl * exp(eta.cl)
+  vc = tvc * exp(eta.vc)
+  d/dt(depot) = -ka * depot
+  d/dt(central) = ka * depot - cl / vc * central
+  conc = central / vc
+  DV = conc
+  DV ~ add(add.err) + prop(prop.err) })
 }
+
+
 
 mod_resid_miss <- function() {
   ini({
@@ -99,61 +100,94 @@ mod_struct_miss<- function() {
   })
 }
 
-#' Generate PK sampling schedules for rxode2 simulations
-#'
-#' Creates dense or sparse PK sampling schedules for multiple
-#' subjects, with optional time jitter, formatted for use with
-#' `rxode2::eventTable()`.
-#'
-#' @param type Character string. Either `"dense"` or `"sparse"`.
-#' @param n_sub Integer. Number of subjects.
-#' @param jitter_min Numeric. Maximum absolute jitter (minutes).
-#' @param seed Optional integer. Random seed.
-#'
-#' @return A tibble with columns `id`, `time`, and `evid`.
-#'
-generate_pk_sampling <- function(
-    type = "dense",
-    n_sub = 300,
-    jitter_min = 2,
+
+create_event_table <- function(
+    frac_dense=0.5,
+    jitter_min = 10,
     seed = 355232
 ) {
+
 
   set.seed(seed)
 
   jitter_hr <- jitter_min / 60
 
   ## ---- Nominal sampling times (hours) ----
-  dense_times <- c(
-    7 * 24 + c(-0.5, 0.5, 1, 2, 3, 4, 6, 8, 9, 24, 48, 72, 96, 120),
-    8 * 24 + c(-0.5, 1, 2, 4),
-    14 * 24 + c(-0.5, 0.5, 1, 2, 3, 4, 6, 8, 9, 24),
-    c(140, 196, 252, 308) * 24
-  )
 
-  sparse_times <- c(
-    c(-0.5, 28, 56, 84, 112) * 24,
-    c(168, 196, 252) * 24
-  )
+  #Phase 1 subjects
 
-  nominal_times <- if (type == "dense") dense_times else sparse_times
+  num_subj_phase1=70
+  #Single dose 100 mg
+  ph1_pk_sampling <- c(0.5, 1, 1.5, 2, 4, 6, 12, 24, 36, 48, 60, 72, 96)
 
-  ## ---- Build sampling table (tidyverse) ----
+  #Phase two subjects
+  # 5 cycles, each 21 days, with 100 mg q.d.
+  dense_times <-  c(
+    7*24 + c(0.5, 1, 2, 3, 4, 6, 8, 9, 24, 48, 72, 96,120),
+    1*24 + c(-0.5, 1, 2, 4),
+    8*24 + c(-0.5, 1, 2, 4),
+    15*24 + c(-0.5, 0.5, 1, 2, 3, 4, 6, 8, 9, 24)#,
+    #map(seq(2,5)*21*24, ~.x + c(-0.5, 1, 2))%>% unlist()
+    )  %>% sort() %>% unique()
 
-  tibble(id = seq_len(n_sub)) %>%
+  #predose on day 1 of cycles 1–5 and predose on cycle 7 day 1, cycle 8 day 1, and cycle 10 day 1
+  sparse_times <- map(1+seq(0,4)*21*24, ~.x -0.5)%>% unlist()  %>% sort() %>% unique()
+
+
+  # Phase 1 eventable
+
+  pk_sampling1=tibble(id = seq(num_subj_phase1)) %>%
     mutate(
       time = map(
         id,
-        ~ nominal_times +
-          runif(length(nominal_times), -jitter_hr, jitter_hr)
+        ~ ph1_pk_sampling +
+          runif(length(ph1_pk_sampling), -jitter_hr, jitter_hr)
+      )
+    )%>%
+    unnest(time) %>%
+    mutate(time=round(time,3)) %>%
+    arrange(id, time)
+
+  ## Phase 2 eventable
+  num_subj_phase2=376
+
+  pk_sampling_ph2 = tibble(id=seq((num_subj_phase1+1),num_subj_phase1+num_subj_phase2),
+                pk_sampling_type = sample(c("dense", "sparse"),
+                                     num_subj_phase2,
+                                     replace = TRUE,
+                                     prob = c(frac_dense, 1-frac_dense)
+                                     )) %>%
+    mutate(
+      time = map(
+        pk_sampling_type,
+        ~ {
+          nominal <- if (.x == "dense") dense_times else sparse_times
+          nominal + runif(length(nominal), -jitter_hr, jitter_hr)
+        }
       )
     ) %>%
     unnest(time) %>%
-    arrange(id, time)
+    mutate(time = round(time, 3)) %>%
+    arrange(id, time) %>%
+    select(-pk_sampling_type)
+
+dose_tab=  et(
+  amountUnits = "mg",
+  timeUnits   = "hours",
+  id          = seq_len(num_subj_phase1 + num_subj_phase2)
+)%>%
+  et( id = 1:num_subj_phase1, dose = 100, nbr.doses = 1, start.time=0 )%>%
+  et( id = seq((num_subj_phase1+1),num_subj_phase1+num_subj_phase2), dose = 100, nbr.doses =17, start.time=0, dosing.interval = 24 )
+
+
+  event_tab <- dose_tab%>%
+    add.sampling(rbind(pk_sampling1, pk_sampling_ph2))
+
+  return(list(event_tab=event_tab,dose_tab=dose_tab))
 }
 
 
-create_sim_data <- function(error_scale, iiv_scale, pk_sampling) {
+create_sim_data <- function(error_scale, iiv_scale, frac_dense = 0.5) {
   mod <- function() {
     ini({
       tka <- 2.5
@@ -183,26 +217,9 @@ create_sim_data <- function(error_scale, iiv_scale, pk_sampling) {
     })
   }
 
-  n_sub <- 100
-  n_doses <-30
+et_obj  <- create_event_table(frac_dense=frac_dense)
 
-  sampling=generate_pk_sampling(type = pk_sampling,
-                              n_sub = n_sub)
-
-
-  et <- et(
-    amountUnits = "mg",
-    timeUnits = "days"
-  ) %>%
-    et(
-      id = 1:n_sub,
-      dose = 400,
-      nbr.doses = n_doses,
-      dosing.interval = 24
-    )%>%
-    add.sampling(sampling)
-
-  sim <- rxSolve(mod, et)
+  sim <- rxSolve(mod, et_obj$event_tab)
 
   demo <- sim %>%
     distinct(id) %>%
@@ -214,7 +231,7 @@ create_sim_data <- function(error_scale, iiv_scale, pk_sampling) {
     rename(ID = id, TIME = time) %>%
     mutate(AMT = 0, CMT = 2, EVID = 0)
 
-  dose_dt <- dose_et$expand() %>%
+  dose_dt <- et_obj$dose_tab$expand() %>%
     as_tibble() %>%
     rename(ID = id, AMT = amt, TIME = time) %>%
     select(-c("ii", "evid")) %>%
@@ -351,22 +368,24 @@ extract_fit_features <- function(fit) {
 #' @param mod_name_string String with the name of a rxode 2 model. Currently accepts: "correct", "struct_miss", "resid_miss".
 #' @param error_scale Double that will indicate the scale in which the error/additive will be increased.
 #' @param iiv_scale Double that will indicate the scale in which the variance of the IIV of all variables will be increased.
-#' @param pk_sampling String that defines the PK sampling: "dense", "sparse"
+#' @param frac_dense String that defines the PK sampling: "dense", "sparse"
 #'
 #' @return A list with the mod name string, fit features, error_scale, iiv_scale and pk_sampling
 #'
 create_ML_samples<-function(mod_name_string,
                             error_scale,
                             iiv_scale,
-                            pk_sampling){
+                            frac_dense){
 
-  sim_data=create_sim_data( error_scale,
+  sim_data=create_sim_data(error_scale,
                    iiv_scale,
-                   pk_sampling)
+                   frac_dense)
 
 
   if(mod_string=="correct"){
-    fit <- nlmixr(mod_correct, sim_data, est="focei")
+
+    fit <- nlmixr(mod_correct, sim_data, "saem", control=list(print=0),
+                  table=list(cwres=TRUE, npde=TRUE))
   }else if(mod_string=="struct_miss"){
     fit <- nlmixr(mod_struct_miss, sim_data, est="focei")
   }else if(mod_string=="resid_miss"){
@@ -384,3 +403,7 @@ create_ML_samples<-function(mod_name_string,
            pk_sampling=pk_sampling)
 return(obj)
 }
+
+error_scale=1
+iiv_scale=1
+frac_dense=1
