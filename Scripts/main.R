@@ -102,11 +102,10 @@ mod_struct_miss<- function() {
 
 
 create_event_table_dataframe <- function(
-    frac_dense=0.5,
+    frac_dense=0.8,
     jitter_min = 10,
     seed = 355232
 ) {
-
 
   set.seed(seed)
 
@@ -122,16 +121,15 @@ create_event_table_dataframe <- function(
 
   #Phase two subjects
   # 5 cycles, each 21 days, with 100 mg q.d.
- # dense_times <-  c(
-  #  7*24 + c(0.5, 1, 2, 3, 4, 6, 8, 9, 24, 48, 72, 96,120),
-   # 1*24 + c(-0.5, 1, 2, 4),
-  #  8*24 + c(-0.5, 1, 2, 4),
-  #  15*24 + c(-0.5, 0.5, 1, 2, 3, 4, 6, 8, 9, 24)#,
-    #map(seq(2,5)*21*24, ~.x + c(-0.5, 1, 2))%>% unlist()
-   # )  %>% sort() %>% unique()
+ dense_times <-  c(
+    7*24 + c(0.5, 1, 2, 3, 4, 6, 8, 9, 24, 48, 72, 96,120),
+    1*24 + c(-0.5, 1, 2, 4),
+    8*24 + c(-0.5, 1, 2, 4),
+    15*24 + c(-0.5, 0.5, 1, 2, 3, 4, 6, 8, 9, 24)
+    )  %>% sort() %>% unique()
 
-  #predose on day 1 of cycles 1–5 and predose on cycle 7 day 1, cycle 8 day 1, and cycle 10 day 1
-#  sparse_times <- map(1+seq(0,4)*21*24, ~.x -0.5)%>% unlist()  %>% sort() %>% unique()
+  # predose on day 1 of cycles 1–5 and predose on cycle 7 day 1, cycle 8 day 1, and cycle 10 day 1
+   sparse_times <- map(1+seq(0,4)*24, ~.x -0.5)%>% unlist()  %>% sort() %>% unique()
 
   # Phase 1 eventable
   pk_sampling1=tibble(id = seq(num_subj_phase1)) %>%
@@ -147,39 +145,29 @@ create_event_table_dataframe <- function(
     arrange(id, time)
 
   # ## Phase 2 eventable
-  # num_subj_phase2=376
-  #
-  # pk_sampling_ph2 = tibble(id=seq((num_subj_phase1+1),num_subj_phase1+num_subj_phase2),
-  #               pk_sampling_type = sample(c("dense", "sparse"),
-  #                                    num_subj_phase2,
-  #                                    replace = TRUE,
-  #                                    prob = c(frac_dense, 1-frac_dense)
-  #                                    )) %>%
-  #   mutate(
-  #     time = map(
-  #       pk_sampling_type,
-  #       ~ {
-  #         nominal <- if (.x == "dense") dense_times else sparse_times
-  #         nominal + runif(length(nominal), -jitter_hr, jitter_hr)
-  #       }
-  #     )
-  #   ) %>%
-  #   unnest(time) %>%
-  #   mutate(time = round(time, 3)) %>%
-  #   arrange(id, time) %>%
-  #   select(-pk_sampling_type)
+  num_subj_phase2=276
 
-# dose_tab=  et(
-#   amountUnits = "mg",
-#   timeUnits   = "hours",
-#   id          = seq_len(num_subj_phase1 + num_subj_phase2)
-# )%>%
-#   et( id = 1:num_subj_phase1, dose = 100, nbr.doses = 1, start.time=0 )%>%
-#   et( id = seq((num_subj_phase1+1),num_subj_phase1+num_subj_phase2), dose = 100, nbr.doses =21*7, start.time=0, dosing.interval = 24 )
-#
-#
-#   event_tab <- dose_tab%>%
-#     add.sampling(rbind(pk_sampling1, pk_sampling_ph2))
+   pk_sampling_ph2 = tibble(id=seq((num_subj_phase1+1),num_subj_phase1+num_subj_phase2),
+                 pk_sampling_type = sample(c("dense", "sparse"),
+                                     num_subj_phase2,
+                                     replace = TRUE,
+                                     prob = c(frac_dense, 1-frac_dense)
+                                     )) %>%
+    mutate(
+      time = map(
+        pk_sampling_type,
+        ~ {
+          nominal <- if (.x == "dense") dense_times else sparse_times
+          nominal + runif(length(nominal), -jitter_hr, jitter_hr)
+        }
+      )
+    ) %>%
+    unnest(time) %>%
+    mutate(time = round(time, 3)) %>%
+    arrange(id, time) %>%
+    select(-pk_sampling_type)
+
+
 
 df_ev=NULL
 
@@ -187,17 +175,30 @@ i=1
 
  for (i in seq_len(num_subj_phase1)){
 
-
    # dose records
    ev  = et(amountUnits = "mg",timeUnits   = "hours")%>%
          et(amt = 100,nbr.doses = 1,start.time=0 )
-  # ev   = et(amountUnits = "mg",timeUnits   = "hours")%>%
-  #et(dose = 100, nbr.doses =21*7, start.time=0, dosing.interval = 24)
+
   # adding the pk_sampling
   ev=ev %>% et(pk_sampling1%>% filter(id==i)%>% pull(time))
 
   # adding it to the event df
-  df_ev=rbind(df_ev,data.frame(ID=i,ev$get.EventTable()))
+  df_ev=rbind(df_ev,tibble(ID=i,ev$get.EventTable()))
+}
+
+i=num_subj_phase1+1
+for (i in seq(num_subj_phase1+1,num_subj_phase1+num_subj_phase2)){
+
+  # dose records
+  ev   = et(amountUnits = "mg",timeUnits   = "hours")%>%
+  et(dose = 100, nbr.doses =15, start.time=0, dosing.interval = 24)
+  ev_exp=etExpand(ev)
+
+  # adding the pk_sampling
+  ev2=ev_exp %>% et(pk_sampling_ph2 %>% filter(id==i)%>% pull(time))
+
+  # adding it to the event df
+  df_ev=rbind(df_ev,tibble(ID=i,ev2$get.EventTable())%>% select(-ii))
 }
 
   return(df_ev)
@@ -254,7 +255,6 @@ create_sim_data <- function(error_scale, iiv_scale, frac_dense = 0.5) {
     filter(evid==1)%>%
     select(-c( "evid")) %>%
     rename(AMT = amt, TIME = time) %>%
-    #select(-c("ii", "evid")) %>%
     mutate(EVID = 101, CMT = 1, DV = 0)
 
   sim_dt <- rbind(obs_dt, dose_dt) %>%
@@ -407,11 +407,16 @@ create_ML_samples<-function(mod_name_string,
     fit <- nlmixr(mod_correct, sim_data, "saem", control=list(print=0),
                   table=list(cwres=TRUE, npde=TRUE))
 
-    fit <- nlmixr(mod_correct, sim_data, "focei")
   }else if(mod_string=="struct_miss"){
-    fit <- nlmixr(mod_struct_miss, sim_data, est="focei")
+
+    fit <- nlmixr(mod_struct_miss, sim_data, "saem", control=list(print=0),
+                  table=list(cwres=TRUE, npde=TRUE))
+
   }else if(mod_string=="resid_miss"){
-    fit <- nlmixr(mod_resid_miss, sim_data, est="focei")
+
+    fit <- nlmixr(mod_resid_miss, sim_data, "saem", control=list(print=0),
+                  table=list(cwres=TRUE, npde=TRUE))
+
   }else {
     stop()
     }
