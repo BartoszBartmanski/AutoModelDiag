@@ -212,13 +212,13 @@ create_sim_data <- function(error_scale, iiv_scale, frac_dense = 0.5) {
       tcl <- 14.472
       tvc <- 120
       # between subject variability
-      eta.ka ~ 0.12
+      eta.ka ~ 0.12 * iiv_scale
       eta.cl + eta.vc ~ c(
-        0.05,
-        0.01, 0.01
+        0.05 * iiv_scale,
+        0.01 * iiv_scale, 0.01 * iiv_scale
       )
-      add.err <- sqrt(0.25)
-      prop.err <- sqrt(0.01)
+      add.err <- sqrt(0.25) * error_scale
+      prop.err <- sqrt(0.01) * error_scale
     })
 
     model({
@@ -236,7 +236,7 @@ create_sim_data <- function(error_scale, iiv_scale, frac_dense = 0.5) {
   }
 
 
-  df_ev=create_event_table_dataframe()
+  df_ev <- create_event_table_dataframe(frac_dense=frac_dense)
 
   sim <- rxSolve(mod, df_ev)
 
@@ -392,45 +392,64 @@ extract_fit_features <- function(fit) {
 #'
 #' @return A list with the mod name string, fit features, error_scale, iiv_scale and pk_sampling
 #'
-create_ML_samples<-function(mod_name_string,
-                            error_scale,
-                            iiv_scale,
-                            frac_dense){
-
-  sim_data=create_sim_data(error_scale,
-                   iiv_scale,
-                   frac_dense)
-
+create_ML_samples <- function(
+    mod_string, error_scale, iiv_scale, frac_dense
+) {
+  sim_data <- create_sim_data(
+    error_scale,
+    iiv_scale,
+    frac_dense
+  )
 
   if(mod_string=="correct"){
 
-    fit <- nlmixr(mod_correct, sim_data, "saem", control=list(print=0),
-                  table=list(cwres=TRUE, npde=TRUE))
+    fit <- nlmixr(
+      mod_correct,
+      sim_data,
+      "saem",
+      # control=list(print=0),
+      table=list(cwres=TRUE, npde=TRUE)
+    )
 
-  }else if(mod_string=="struct_miss"){
+  } else if (mod_string=="struct_miss") {
 
-    fit <- nlmixr(mod_struct_miss, sim_data, "saem", control=list(print=0),
-                  table=list(cwres=TRUE, npde=TRUE))
+    fit <- nlmixr(
+      mod_struct_miss,
+      sim_data,
+      "saem",
+      # control=list(print=0),
+      table=list(cwres=TRUE, npde=TRUE)
+    )
 
   }else if(mod_string=="resid_miss"){
 
-    fit <- nlmixr(mod_resid_miss, sim_data, "saem", control=list(print=0),
-                  table=list(cwres=TRUE, npde=TRUE))
+    fit <- nlmixr(
+      mod_resid_miss,
+      sim_data,
+      "saem",
+      # control=list(print=0),
+      table=list(cwres=TRUE, npde=TRUE)
+    )
 
-  }else {
-    stop()
-    }
+  } else {
+    stop("Wrong option for mod_string argument")
+  }
 
-  fit_features=extract_fit_features(fit)
+  fit_features <- extract_fit_features(fit)
 
-  obj=list(mod_name=mod_string,
-           fit_features=fit_features,
-           error_scale=error_scale,
-           iiv_scale=iiv_scale,
-           pk_sampling=pk_sampling)
-return(obj)
+  obj=list(
+    mod_name=mod_string,
+    fit_features=fit_features,
+    error_scale=error_scale,
+    iiv_scale=iiv_scale,
+    pk_sampling=pk_sampling
+  )
+
+  return(obj)
 }
 
 error_scale=1
 iiv_scale=1
 frac_dense=1
+
+create_ML_samples("correct", error_scale, iiv_scale, frac_dense)
