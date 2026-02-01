@@ -266,11 +266,7 @@ create_sim_data <- function(error_scale, iiv_scale, frac_dense = 0.5) {
 }
 
 extract_fit_features <- function(fit) {
-  # Safety checks
-  if (is.null(fit$residuals)) stop("No residuals found in fit object")
-  if (is.null(fit$eta)) stop("No ETA estimates found in fit object")
-
-  res <- fit$residuals
+  res <- data.frame(time=fit$TIME, cwres=fit$CWRES, dv=fit$DV, ipred=fit$IPRED)
   eta <- fit$eta
 
   # Ensure required columns exist
@@ -283,13 +279,14 @@ extract_fit_features <- function(fit) {
   # ----------------------------
   # 1. OFV / information
   # ----------------------------
-  ofv  <- fit$objf
-  aic  <- tryCatch(AIC(fit), error = function(e) NA)
-  bic  <- tryCatch(BIC(fit), error = function(e) NA)
+  ofv <- fit$objDf$OBJF
+  aic <- fit$objDf$AIC
+  bic <- fit$objDf$BIC
 
   # ----------------------------
   # 2. CWRES summary
   # ----------------------------
+  # TODO: check this formula
   cwres_mean <- mean(res$cwres, na.rm = TRUE)
   cwres_sd   <- sd(res$cwres, na.rm = TRUE)
   cwres_skew <- mean((res$cwres - cwres_mean)^3, na.rm = TRUE) / cwres_sd^3
@@ -304,6 +301,7 @@ extract_fit_features <- function(fit) {
   # ----------------------------
   # 4. CWRES autocorrelation
   # ----------------------------
+  # TODO: why the second element of the auto-correlations array
   cwres_acf1 <- tryCatch(
     acf(res$cwres, plot = FALSE)$acf[2],
     error = function(e) NA
@@ -321,20 +319,22 @@ extract_fit_features <- function(fit) {
   early <- res$time <= t_med
   late  <- res$time >  t_med
 
-  delta_bias_early_late <- mean(pred_err[late], na.rm = TRUE) -
+  delta_bias_early_late <- (
+    mean(pred_err[late], na.rm = TRUE) -
     mean(pred_err[early], na.rm = TRUE)
+  )
 
   # ----------------------------
   # 6. ETA features
   # ----------------------------
-  eta_cl_name <- grep("CL", names(eta), value = TRUE)[1]
+  eta_cl_name <- grep("cl", names(eta), value = TRUE)[1]
 
   eta_cl_sd   <- if (!is.na(eta_cl_name)) sd(eta[[eta_cl_name]], na.rm = TRUE) else NA
   eta_cl_mean <- if (!is.na(eta_cl_name)) mean(eta[[eta_cl_name]], na.rm = TRUE) else NA
 
   # Correlation between first two ETAs (if available)
   eta_cor <- if (ncol(eta) >= 2) {
-    cor(eta[[1]], eta[[2]], use = "complete.obs")
+    cor(eta[, 2], eta[, 3], use = "complete.obs")
   } else {
     NA
   }
@@ -343,15 +343,18 @@ extract_fit_features <- function(fit) {
   # 7. Shrinkage
   # ----------------------------
   shrink_cl <- tryCatch(
-    fit$shrink[grep("CL", names(fit$shrink))[1]],
+    fit$shrink[grep("cl", names(fit$shrink))[1]],
     error = function(e) NA
   )
 
   # ----------------------------
   # 8. Convergence / stability
   # ----------------------------
-  converged <- as.numeric(isTRUE(fit$convergence))
-  n_iter    <- tryCatch(fit$iterations, error = function(e) NA)
+  # TODO: maybe try to get the following two parameters from fit object
+  # it is possible to set maxIter -> not get it from fit obj
+  # converged <- as.numeric(isTRUE(fit$convergence))
+  # n_iter <- tryCatch(fit$iterations, error = function(e) NA)
+
 
   # ----------------------------
   # Output feature vector
@@ -372,16 +375,11 @@ extract_fit_features <- function(fit) {
     eta_cl_mean             = eta_cl_mean,
     eta_cl_sd               = eta_cl_sd,
     eta_cor_1_2             = eta_cor,
-    shrink_cl               = shrink_cl,
-    converged               = converged,
-    n_iterations            = n_iter
+    shrink_cl               = shrink_cl
   )
 
   return(features)
 }
-
-
-
 
 #'
 #'
