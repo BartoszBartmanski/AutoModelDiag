@@ -295,13 +295,10 @@ fit <- nlmixr(
   table=list(cwres=TRUE, npde=TRUE)
 )
 
-fit_and_params <- list(
+list(
   mod_name=mod_string,
-  fit_features=fit_features,
   error_scale=error_scale,
   iiv_scale=iiv_scale,
-  pk_sampling=pk_sampling
-)
-
-fit_and_params %>% saveRDS(snakemake@output[[1]])
-
+  frac_dense=frac_dense,
+  fit=fit
+) %>% saveRDS(snakemake@output[[1]])
