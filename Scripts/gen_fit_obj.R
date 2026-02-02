@@ -276,6 +276,11 @@ get_model <-function(model_string) {
 
 }
 
+error_scale <- as.numeric(snakemake@wildcards[["error_scale"]])
+iiv_scale <- as.numeric(snakemake@wildcards[["iiv_scale"]])
+frac_dense <- as.numeric(snakemake@wildcards[["frac_dense"]])
+mod_string <- snakemake@wildcards[["mod_string"]]
+
 sim_data <- create_sim_data(
   error_scale,
   iiv_scale,
@@ -283,7 +288,7 @@ sim_data <- create_sim_data(
 )
 
 fit <- nlmixr(
-  get_model(model_string),
+  get_model(mod_string),
   sim_data,
   "saem",
   # control=list(print=0),
@@ -298,5 +303,5 @@ fit_and_params <- list(
   pk_sampling=pk_sampling
 )
 
-fit_and_params %>% saveRDS(output)
+fit_and_params %>% saveRDS(snakemake@output[[1]])
 

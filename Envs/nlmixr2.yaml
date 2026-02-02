@@ -1,0 +1,5 @@
+channels:
+  - conda-forge
+dependencies:
+  - r-tidyverse==2.0.0
+  - r-nlmixr2==5.0.0
