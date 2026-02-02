@@ -7,10 +7,12 @@ Links:
 
 ## TODO: Bartosz
 
-- [ ] check extract_fit_features
+- [x] check extract_fit_features
 - [x] add error_scale, iiv_scale, frac_dense inside create_sim_data
 - [ ] test few cases
 - [ ] add snakemake pipeline
+- [ ] time since last dose
+- [ ] how to fix number of iterations
 
 - [ ] Set a variable with common initial estimates for all the models tested
 - [ ] Check where the seed should be so everything is reproducible in this part
