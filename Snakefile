@@ -14,6 +14,9 @@ rule gen_fit_obj:
 		"Output/fit_{mod_string}_i{iiv_scale}_e{error_scale}_f{frac_dense}.rds"
 	conda:
 		"Envs/nlmixr2.yaml"
+	resources:
+		runtime = lambda wc, attempt: 120 * attempt,
+		mem_mb = lambda wc, attempt: 2000 * attempt
 	script:
 		"Scripts/gen_fit_obj.R"
 

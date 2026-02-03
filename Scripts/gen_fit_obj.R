@@ -20,8 +20,8 @@ mod_correct <- function() {
 
     eta.ka ~ 0.12
     eta.cl + eta.vc ~ c(
-      0.05,
-      0.01, 0.01
+      0.5,
+      0.01, 0.1
     )
 
     add.err  <- sqrt(0.25)
@@ -41,16 +41,16 @@ mod_correct <- function() {
 
 mod_resid_miss <- function() {
   ini({
-    tka <- 2.5
-    tcl <- 50
-    tvc <- 7
+    tka <- 3
+    tcl <- 13
+    tvc <- 130
+
     # between subject variability
     eta.ka ~ 0.12
     eta.cl + eta.vc ~ c(
-      0.05,
-      0.01, 0.01
+      0.5,
+      0.01, 0.1
     )
-    add.err <- sqrt(0.25)
     prop.err <- sqrt(0.01)
   })
 
@@ -70,14 +70,15 @@ mod_resid_miss <- function() {
 
 mod_struct_miss<- function() {
   ini({
-    tka <- 2.5
-    tcl <- 50
-    tvc <- 7
+    tka <- 3
+    tcl <- 13
+    tvc <- 130
+
     # between subject variability
     eta.ka ~ 0.12
     eta.cl + eta.vc ~ c(
-      0.05,
-      0.01, 0.01
+      0.5,
+      0.01, 0.1
     )
     add.err <- sqrt(0.25)
     prop.err <- sqrt(0.01)
@@ -276,29 +277,34 @@ get_model <-function(model_string) {
 
 }
 
+# Get snakemake variables
 error_scale <- as.numeric(snakemake@wildcards[["error_scale"]])
 iiv_scale <- as.numeric(snakemake@wildcards[["iiv_scale"]])
 frac_dense <- as.numeric(snakemake@wildcards[["frac_dense"]])
 mod_string <- snakemake@wildcards[["mod_string"]]
+output_path <- snakemake@output[[1]]
 
+# Create simulation data
 sim_data <- create_sim_data(
   error_scale,
   iiv_scale,
   frac_dense
 )
 
+# Fit to the data a model specified with `mod_string`
 fit <- nlmixr(
   get_model(mod_string),
   sim_data,
-  "saem",
-  # control=list(print=0),
-  table=list(cwres=TRUE, npde=TRUE)
+  est="saem",
+  control=saemControl(print=50, nBurn=200, nEm=300),
+  table=tableControl(cwres=TRUE),
 )
 
+# Save all parameters and fit object in RDS
 list(
   mod_name=mod_string,
   error_scale=error_scale,
   iiv_scale=iiv_scale,
   frac_dense=frac_dense,
   fit=fit
-) %>% saveRDS(snakemake@output[[1]])
+) %>% saveRDS(output_path)
