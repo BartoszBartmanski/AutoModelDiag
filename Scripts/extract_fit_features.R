@@ -1,3 +1,7 @@
+library(tidyverse)
+library(nlmixr2)
+library(jsonlite)
+
 
 extract_fit_features <- function(fit) {
   res <- data.frame(time=fit$TIME, cwres=fit$CWRES, dv=fit$DV, ipred=fit$IPRED)
@@ -90,67 +94,27 @@ extract_fit_features <- function(fit) {
   return(features)
 }
 
-#'
-#'
-#' @param mod_name_string String with the name of a rxode 2 model. Currently accepts: "correct", "struct_miss", "resid_miss".
-#' @param error_scale Double that will indicate the scale in which the error/additive will be increased.
-#' @param iiv_scale Double that will indicate the scale in which the variance of the IIV of all variables will be increased.
-#' @param frac_dense String that defines the PK sampling: "dense", "sparse"
-#'
-#' @return A list with the mod name string, fit features, error_scale, iiv_scale and pk_sampling
-#'
-create_ML_samples <- function(
-    mod_string, error_scale, iiv_scale, frac_dense
-) {
-  sim_data <- create_sim_data(
-    error_scale,
-    iiv_scale,
-    frac_dense
-  )
+# Get snakemake variables
+error_scale <- as.numeric(snakemake@wildcards[["error_scale"]])
+iiv_scale <- as.numeric(snakemake@wildcards[["iiv_scale"]])
+frac_dense <- as.numeric(snakemake@wildcards[["frac_dense"]])
+mod_string <- snakemake@wildcards[["mod_string"]]
+input_file <- snakemake@input[[1]]
+output_path <- snakemake@output[[1]]
 
-  if(mod_string=="correct"){
+params_and_fit <- readRDS(input_file)
 
-    fit <- nlmixr(
-      mod_correct,
-      sim_data,
-      "saem",
-      # control=list(print=0),
-      table=list(cwres=true, npde=true)
-    )
+# extract features
+features <- extract_fit_features(params_and_fit$fit)
 
-  } else if (mod_string=="struct_miss") {
+# Append fit parameters
+features <- c(
+  features,
+  error_scale=error_scale,
+  iiv_scale=iiv_scale,
+  frac_dense=frac_dense,
+  mod_string=mod_string
+)
 
-    fit <- nlmixr(
-      mod_struct_miss,
-      sim_data,
-      "saem",
-      # control=list(print=0),
-      table=list(cwres=true, npde=true)
-    )
-
-  } else if(mod_string=="resid_miss"){
-
-    fit <- nlmixr(
-      mod_resid_miss,
-      sim_data,
-      "saem",
-      # control=list(print=0),
-      table=list(cwres=true, npde=true)
-    )
-
-  } else {
-    stop("wrong option for mod_string argument")
-  }
-
-  fit_features <- extract_fit_features(fit)
-
-  obj=list(
-    mod_name=mod_string,
-    fit_features=fit_features,
-    error_scale=error_scale,
-    iiv_scale=iiv_scale,
-    pk_sampling=pk_sampling
-  )
-
-  return(obj)
-}
+# Save in json
+jsonlite::write_json(features, output_path)
