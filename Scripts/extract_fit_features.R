@@ -4,7 +4,7 @@ library(jsonlite)
 
 
 extract_fit_features <- function(fit) {
-  res <- data.frame(time=fit$TIME, cwres=fit$CWRES, dv=fit$DV, ipred=fit$IPRED)
+  res <- data.frame(time = fit$TIME, cwres = fit$CWRES, dv = fit$DV, ipred = fit$IPRED)
   eta <- fit$eta
 
   # Ensure required columns exist
@@ -22,13 +22,13 @@ extract_fit_features <- function(fit) {
   # 2. CWRES summary
   # TODO: check this formula
   cwres_mean <- mean(res$cwres, na.rm = TRUE)
-  cwres_sd   <- sd(res$cwres, na.rm = TRUE)
+  cwres_sd <- sd(res$cwres, na.rm = TRUE)
   cwres_skew <- mean((res$cwres - cwres_mean)^3, na.rm = TRUE) / cwres_sd^3
 
   # 3. CWRES vs time
   lm_cwres_time <- lm(cwres ~ time, data = res)
-  cwres_slope   <- coef(lm_cwres_time)[["time"]]
-  cwres_r2      <- summary(lm_cwres_time)$r.squared
+  cwres_slope <- coef(lm_cwres_time)[["time"]]
+  cwres_r2 <- summary(lm_cwres_time)$r.squared
 
   # 4. CWRES autocorrelation
   # TODO: why the second element of the auto-correlations array
@@ -45,17 +45,17 @@ extract_fit_features <- function(fit) {
   # Early vs late split
   t_med <- median(res$time, na.rm = TRUE)
   early <- res$time <= t_med
-  late  <- res$time >  t_med
+  late <- res$time > t_med
 
   delta_bias_early_late <- (
     mean(pred_err[late], na.rm = TRUE) -
-    mean(pred_err[early], na.rm = TRUE)
+      mean(pred_err[early], na.rm = TRUE)
   )
 
   # 6. ETA features
   eta_cl_name <- grep("cl", names(eta), value = TRUE)[1]
 
-  eta_cl_sd   <- if (!is.na(eta_cl_name)) sd(eta[[eta_cl_name]], na.rm = TRUE) else NA
+  eta_cl_sd <- if (!is.na(eta_cl_name)) sd(eta[[eta_cl_name]], na.rm = TRUE) else NA
   eta_cl_mean <- if (!is.na(eta_cl_name)) mean(eta[[eta_cl_name]], na.rm = TRUE) else NA
 
   # Correlation between first two ETAs (if available)
@@ -102,19 +102,16 @@ mod_string <- snakemake@wildcards[["mod_string"]]
 input_file <- snakemake@input[[1]]
 output_path <- snakemake@output[[1]]
 
-params_and_fit <- readRDS(input_file)
-
-# extract features
-features <- extract_fit_features(params_and_fit$fit)
-
-# Append fit parameters
-features <- c(
-  features,
-  error_scale=error_scale,
-  iiv_scale=iiv_scale,
-  frac_dense=frac_dense,
-  mod_string=mod_string
-)
+# Get the features
+features <- readRDS(input_file) %>%
+  pluck("fit") %>%
+  extract_fit_features() %>%
+  c(.,
+    error_scale = error_scale,
+    iiv_scale = iiv_scale,
+    frac_dense = frac_dense,
+    mod_string = mod_string
+  )
 
 # Save in json
-jsonlite::write_json(features, output_path)
+features %>% jsonlite::write_json(output_path)
